@@ -8,14 +8,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.example.advanced.trace.ThreadLocalService;
 import com.example.advanced.trace.TraceId;
 import com.example.advanced.trace.TraceStatus;
 
+import lombok.AllArgsConstructor;
+
 @Component
+@AllArgsConstructor
 @Aspect
 public class LoggingAspect {
 
+	private final String LOG_PREFIX = "|-->";
+	private final String LOG_SUFFIX = "|<--";
+
 	private final Logger logger = LoggerFactory.getLogger(getClass());
+	private final ThreadLocalService threadLocalService;
 
 	// api 호출 시 logging
 	// @Pointcut("execution(* com.example.advanced.api.*(..))")
@@ -33,29 +41,37 @@ public class LoggingAspect {
 		//execute
 		try {
 			joinPoint.proceed();
-
-			end(status);
-			logger.info("request end == " );
+			end(methodName, status);
+			// logger.info("request end == " );
 		} catch (Exception e) {
-			exception(status, e);
+			exception(status, methodName, e);
+			//비즈니스 로직 영향 없도록 throw
+			throw e;
 		}
 	}
 
 	private TraceStatus begin(String methodName){
-		TraceStatus traceStatus = new TraceStatus(TraceId.createTraceId(), System.currentTimeMillis());
+		TraceStatus traceStatus = threadLocalService.getCurrTrace();
+		if(traceStatus == null){
+			traceStatus = new TraceStatus(TraceId.createTraceId());
+		}else{
+			traceStatus = new TraceStatus(traceStatus);
+		}
+		threadLocalService.setCurrTrace(traceStatus);
 		logger.info(loggingStatus(traceStatus, methodName));
 
 		return traceStatus;
 	}
 
-	private void end(TraceStatus status) {
-		complete(status, null);
+	private void end(String methodName, TraceStatus status) {
+		complete(status, methodName, null);
 	}
-	
-	private void complete(TraceStatus traceStatus, Exception e) {
-		traceStatus.completeCurrLevel();
+
+	private void complete(TraceStatus traceStatus, String methodName, Exception e) {
 		long totalTimeMillis = System.currentTimeMillis() - traceStatus.getStartMillis();
-		String message = loggingStatus(traceStatus, "method") + " time=" + totalTimeMillis + "ms";
+		String message = loggingStatus(traceStatus, methodName) + " time=" + totalTimeMillis + "ms";
+		TraceStatus nextStatus = TraceStatus.completeCurrLevel(traceStatus);
+		threadLocalService.setCurrTrace(nextStatus);
 
 		if (e != null) {
 			message += (" ex=" + e.toString() + ": 예외 발생!");
@@ -64,8 +80,8 @@ public class LoggingAspect {
 		logger.info(message);
 	}
 
-	private void exception(TraceStatus status, Exception e) {
-		complete(status, e);
+	private void exception(TraceStatus status, String methodName, Exception e) {
+		complete(status, methodName, e);
 	}
 
 	private String loggingStatus(TraceStatus status, String methodName) {

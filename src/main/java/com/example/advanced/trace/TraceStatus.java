@@ -5,27 +5,34 @@ import lombok.Getter;
 @Getter
 public class TraceStatus {
 	private TraceId traceId;
+	private TraceStatus preStatus;
 	private int traceLevel;
 	private long startMillis;
 
-	public TraceStatus(TraceId traceId, int traceLevel, long startMillis) {
+	public TraceStatus(TraceId traceId) {
 		this.traceId = traceId;
-		this.traceLevel = traceLevel;
-		this.startMillis = startMillis;
-	}
-
-	public TraceStatus(TraceId traceId, long startMillis) {
-		this.traceId = traceId;
-		this.startMillis = startMillis;
+		this.startMillis = System.currentTimeMillis();
 
 		traceLevel = 0;
 	}
 
-	public void completeCurrLevel() {
-		this.traceLevel--;
+	public TraceStatus(TraceStatus preStatus){
+		this.preStatus = preStatus;
+		this.traceId = preStatus.getTraceId();
+		this.traceLevel = preStatus.getTraceLevel() + 1;
+		this.startMillis = System.currentTimeMillis();
 	}
 
-	public String getTraceId() {
-		return traceId.getId();
+	//todo  static vs non-static
+	public static TraceStatus startNextLevel(TraceStatus status){
+		return new TraceStatus(status);
+	}
+
+	public static TraceStatus completeCurrLevel(TraceStatus status) {
+		return status.getPreStatus();
+	}
+
+	public TraceId getTraceId() {
+		return traceId;
 	}
 }
